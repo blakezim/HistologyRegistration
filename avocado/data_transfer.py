@@ -4,7 +4,7 @@ import tkinter as tk
 # import PyCA.Core as ca
 import subprocess as sp
 # import PyCA.Common as common
-import CAMP.FileIO as io
+import CAMP.camp.FileIO as io
 from avocado.RabbitCommon import Common as rc
 
 
@@ -39,6 +39,15 @@ def data_transfer(regObj, opt):
         return
 
     for timepoint in opt.transfer_timepoints:
+        # Use subprocess to get the list of files from RAID10
+        p = sp.Popen(["ssh", "bzimmerman@sebulba.med.utah.edu",
+                      f"find {opt.raw_dir}*{opt.rabbit[-2:]}* -type d"],
+                     stdout=sp.PIPE)
+        raidDirs, _ = p.communicate()
+
+        # There is a new line at the end which puts an empty at the end of the list
+        raidDirs = raidDirs.decode('utf-8').split('\n')[:-1]
+        dicomList = []
         # Initialize an empty list
         tpList = []
 
@@ -88,14 +97,14 @@ def data_transfer(regObj, opt):
     rc.WriteList(dicomList, regObj.rabbitDirectory + '/ConfigFiles/source_volume_list.txt')
 
     # Check if temperature data exists and if not, transfer it
-    # if regObj.pipelinePhase == 'temperature':
-    #     p = sp.Popen(["ssh", "bzimmerman@sebulba.med.utah.edu",
-    #                   "find /v/raid2/sjohnson/Data/2018_RabbitData/{0}/TemperatureRecon/ForRegistration_Current/ -type f".format(
-    #                       rabbitNumber)],
-    #                  stdout=sp.PIPE)
-    #     raidDirs, _ = p.communicate()
-    # else:
-    #     raidDirs = []
+    if regObj.pipelinePhase == 'temperature':
+        p = sp.Popen(["ssh", "bzimmerman@sebulba.med.utah.edu",
+                      "find /v/raid2/sjohnson/Data/2018_RabbitData/{0}/TemperatureRecon/ForRegistration_Current/ -type f".format(
+                          rabbitNumber)],
+                     stdout=sp.PIPE)
+        raidDirs, _ = p.communicate()
+    else:
+        raidDirs = []
     #
     # if raidDirs != []:
     #     if not os.path.exists('{0}/rawDicoms/TemperatureRecon/'.format(regObj.rabbitDirectory)):

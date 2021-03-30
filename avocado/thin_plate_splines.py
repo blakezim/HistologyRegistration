@@ -6,9 +6,9 @@ import numpy as np
 # import PyCA.Core as ca
 from tkinter import Tk
 # import PyCA.Common as common
-import CAMP.FileIO as io
-import CAMP.Core as core
-import CAMP.StructuredGridOperators as so
+import CAMP.camp.FileIO as io
+import CAMP.camp.Core as core
+import CAMP.camp.StructuredGridOperators as so
 from avocado.RabbitCommon import Common as rc
 from avocado.RabbitCommon import Config
 # import PyCACalebExtras.Common as cc
@@ -51,7 +51,7 @@ TPSConfigSpec = {
         Config.Param(default=None,
                      comment='Path to the TPS registered volumes. '),
     'incompressible':
-        Config.Param(default=False,
+        Config.Param(default=True,
                      comment='Volume Preserving registration.'),
     'rerun':
         Config.Param(default=False,

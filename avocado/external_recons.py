@@ -3,13 +3,15 @@ import sys
 import glob
 import torch
 import numpy as np
+import subprocess as sp
 # import PyCA.Core as ca
 from tkinter import Tk
+import tkinter as tk
 # import PyCA.Common as common
-import CAMP.FileIO as io
-import CAMP.Core as core
+import CAMP.camp.FileIO as io
+import CAMP.camp.Core as core
 from scipy.io import loadmat
-import CAMP.StructuredGridOperators as so
+import CAMP.camp.StructuredGridOperators as so
 from avocado.RabbitCommon import Common as rc
 from avocado.RabbitCommon import Config
 # import PyCACalebExtras.Common as cc
@@ -114,7 +116,7 @@ def _generate_stir_vol(stir_center, stir_space, stir_data):
     z_org = np.array(stir_center)[:, 2].min()
     vol_org = [stir_center[0][0] - ((stir_data.shape[0] / 2) * stir_space[0]),
                stir_center[0][1] - ((stir_data.shape[1] / 2) * stir_space[1]),
-               z_org + z_slab / 2.0]
+               z_org + z_slab / 2.0] # Plus or minus?
 
     vol_space = [stir_space[0], stir_space[1], z_slab]
 
@@ -150,20 +152,23 @@ def _get_stir_vol(stir_dicts):
 
     sorted_inds = np.argsort(np.array(centers)[:, -1])
 
+    # t1s = [np.flip(x, -1) for x in t1s] # Flip the data
+    t1s = t1s[::-1]  # Put the other one first
+
     stacked_t1s = np.concatenate(t1s, -1)
 
     sorted_centers = []
     sorted_t1s = np.zeros_like(stacked_t1s)
 
-    for i in range(t1s[0].shape[-1]):
-        sorted_t1s[..., i*2] = t1s[1][..., i]
-        sorted_t1s[..., (i*2)+1] = t1s[0][..., i]
-        sorted_centers.append(centers[10 + i])
-        sorted_centers.append(centers[i])
+    # for i in range(t1s[0].shape[-1]):
+    #     sorted_t1s[..., i*2] = t1s[1][..., i]
+    #     sorted_t1s[..., (i*2)+1] = t1s[0][..., i]
+    #     sorted_centers.append(centers[10 + i])
+    #     sorted_centers.append(centers[i])
 
-    # for i, ind in enumerate(sorted_inds):
-    #     sorted_centers.append(centers[ind])
-    #     sorted_t1s[..., i] = stacked_t1s[..., ind]
+    for i, ind in enumerate(sorted_inds):
+        sorted_centers.append(centers[ind])
+        sorted_t1s[..., i] = stacked_t1s[..., ind]
 
     t1_vol = _generate_stir_vol(sorted_centers, resolutions[0], sorted_t1s)
 
@@ -174,16 +179,69 @@ def ExternalRecon(regObj, opt):
 
     rerun = False
 
+    # If the path doesn't exists, we can make it and try to transfer the files
     if not os.path.exists(f'{regObj.rabbitDirectory}/externalRecons/'):
-        print('No external files to recon ... skipping')
-        return
+
+        for timepoint in opt.transfer_timepoints:
+            # Use subprocess to get the list of files from RAID10
+            p = sp.Popen(["ssh", "bzimmerman@sebulba.med.utah.edu",
+                          f"find {opt.raw_dir}*{opt.rabbit[-2:]}* -type d"],
+                         stdout=sp.PIPE)
+            raidDirs, _ = p.communicate()
+
+            # There is a new line at the end which puts an empty at the end of the list
+            raidDirs = raidDirs.decode('utf-8').split('\n')[:-1]
+
+            # Sort out the offline recon directories
+            offlineDirs = [x for x in raidDirs if 'OfflineRecon' in x]
+            offlineFiles = []
+
+            for offDir in offlineDirs:
+                # Use subprocess to get the list of files from RAID10
+                p = sp.Popen(["ssh", "bzimmerman@sebulba.med.utah.edu",
+                              f"find {offDir.split(' ')[0]}*/OfflineRecon/"],
+                             stdout=sp.PIPE)
+                offline_files, _ = p.communicate()
+
+                # There is a new line at the end which puts an empty at the end of the list
+                offline_files = offline_files.decode('utf-8').split('\n')[:-1]
+                offlineFiles += offline_files
+
+            tpList = []
+            # Create a selector so the ablation volumes can be selected
+            Selector = rc.PathSelector(tk, sorted(offlineFiles), f'Choose {timepoint} Day Offline Files to Transfer')
+            convertFiles = Selector.get_files()
+            Selector.root.destroy()
+            tpList += convertFiles
+
+            for i, path in enumerate(tpList, 1):
+                # Get the name of the file
+                filename = path.split('OfflineRecon/')[-1]
+
+                # Correct the special characters in the path string so the scp command will work
+                path = path.replace("^", "\^").replace(" ", "\ ")
+
+                rawOutName = f'{regObj.rabbitDirectory}/externalRecons/{timepoint}/{filename}'
+                rawOutName = rawOutName.replace('\\ ', '_').replace('\ ', '_')
+
+                # Check if the folder exists or not
+                if not os.path.exists(os.path.dirname(rawOutName)):
+                    os.makedirs(os.path.dirname(rawOutName))
+
+                # If the volume doesn't already exist, then copy it over
+                if not os.path.exists(rawOutName):
+                    p = sp.Popen(["scp", "-r", f"bzimmerman@sebulba.med.utah.edu:{path}", rawOutName])
+                    os.waitpid(p.pid, 0)
+
+        # print('No external files to recon ... skipping')
+        # return
     print('Reconning External Files ... ', end='')
 
     # Get a list of the files
     ablation_files = sorted(glob.glob(f'{regObj.rabbitDirectory}/externalRecons/AblationImaging/*'))
 
-    pre_files = [x for x in ablation_files if 'Pre' in x]
-    post_files = [x for x in ablation_files if 'Post' in x]
+    pre_files = sorted([x for x in ablation_files if 'Pre' in x and 'STIR' in x])[::-1]
+    post_files = sorted([x for x in ablation_files if 'Post' in x and 'STIR' in x])[::-1]
 
     pre_dicts = [loadmat(x) for x in pre_files]
     post_dicts = [loadmat(x) for x in post_files]
@@ -205,6 +263,7 @@ def ExternalRecon(regObj, opt):
         io.SaveITKFile(post_vol, f'{out_dir}{start_num + 2:03d}{post_name}')
 
     long_files = sorted(glob.glob(f'{regObj.rabbitDirectory}/externalRecons/PostImaging/*'))
+    long_files = [x for x in long_files if 'STIR' in x]
     long_dicts = [loadmat(x) for x in long_files]
     long_vol = _get_stir_vol(long_dicts)
 

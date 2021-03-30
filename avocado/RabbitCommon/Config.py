@@ -274,31 +274,40 @@ def MkConfig(d, spec):
     If you do not use yaml config files, or are calling functions from a test
     script, this is the preferred way to set up configs.
     """
+    ValidateDict(d, spec)
 
-    if not 'scales' in d.keys():
-        ValidateDict(d, spec)
+    # convert dict keys to Object attributes (safely)
+    c = DictKeysToAttributes(d)
 
-        # convert dict keys to Object attributes (safely)
-        c = DictKeysToAttributes(d)
+    # run hooks if supplied by spec
+    RunValidationHooks(c, spec)
 
-        # run hooks if supplied by spec
-        RunValidationHooks(c, spec)
+    return c
 
-        return c
-    else:
-        # multiscale config. must validate each section
-        o = _Object()
-        o.__dict__['scales'] = d['scales']
-
-        for si in d['scales']:
-            subname = 'paramsScale'+str(si)
-            if not subname in d.keys():
-                raise Exception(subname + ' config section missing')
-            # each of these sections must be valid configs
-            o.__dict__[subname] = MkConfig(d[subname], spec)
-        # HACK: there should be a better way to handle multiscale vs single
-        o.__dict__['study'] = o.__dict__['paramsScale'+str(d['scales'][0])].study
-        return o
+    # if not 'scales' in d.keys():
+    #     ValidateDict(d, spec)
+    #
+    #     # convert dict keys to Object attributes (safely)
+    #     c = DictKeysToAttributes(d)
+    #
+    #     # run hooks if supplied by spec
+    #     RunValidationHooks(c, spec)
+    #
+    #     return c
+    # else:
+    #     # multiscale config. must validate each section
+    #     o = _Object()
+    #     o.__dict__['scales'] = d['scales']
+    #
+    #     for si in d['scales']:
+    #         subname = 'paramsScale'+str(si)
+    #         if not subname in d.keys():
+    #             raise Exception(subname + ' config section missing')
+    #         # each of these sections must be valid configs
+    #         o.__dict__[subname] = MkConfig(d[subname], spec)
+    #     # HACK: there should be a better way to handle multiscale vs single
+    #     o.__dict__['study'] = o.__dict__['paramsScale'+str(d['scales'][0])].study
+    #     return o
 
 
 def Load(spec, argv, extraText=''):

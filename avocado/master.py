@@ -5,10 +5,11 @@ import argparse
 import avocado.data_transfer as DT
 import tkinter as tk
 # import AggregateData
-import avocado.rigid_registration as RR
-import avocado.elastic_registration as ER
-import avocado.thin_plate_splines as TPS
-import avocado.external_recons as EXT
+import rigid_registration as RR
+import elastic_registration as ER
+import thin_plate_splines as TPS
+import external_recons as EXT
+import temperature_registration as TPR
 # import ElastRegistration
 # import ThinPlateSplines
 # import TemperatureRecon
@@ -23,14 +24,15 @@ parser.add_argument('-d', '--raw_dir', type=str,
                     help='Path to raw dicom directory')
 parser.add_argument('-b', '--base_dir', type=str, default='/hdscratch2/',
                     help='Base directory for where to rabiit folder to contain the data.')
-parser.add_argument('-p', '--phase', type=str, default='day0_motion',
+parser.add_argument('-p', '--phase', type=str, default='temperature',
                     help='Phase of registration to run.')
-parser.add_argument('-r', '--rabbit', type=str, default='20_089',
+parser.add_argument('-r', '--rabbit', type=str, default='20_091',
                     help='Rabbit number to process.')
-parser.add_argument('-t', '--transfer_timepoints', type=str, default=['AblationImaging'],
+parser.add_argument('-t', '--transfer_timepoints', type=str, default=['AblationImaging', 'PostImaging'],
                     help='Which imaging timepoints to transfer', nargs='*')
 parser.add_argument('-dev', '--device', type=str, default='cuda:1',
                     help='Torch device identifier for variable location')
+parser.add_argument('--transfer_only', action='store_true', help='Only transfer files?')
 opt = parser.parse_args()
 
 
@@ -121,6 +123,9 @@ def main(opt):
     # Generate volumes from the STIR: Always check
     EXT.ExternalRecon(phaseObj, opt)
 
+    if opt.transfer_only:
+        return
+
     # Data Selection - Seclect the files to be used/registered from the ones transferred
     # If the phase is interday
     if phaseObj.pipelinePhase == 'interday' and phaseObj.sourceVolumes is None:
@@ -183,7 +188,7 @@ def main(opt):
             rc.WriteConfig(phaseSpec, phaseObj,
                            phaseObj.rabbitDirectory + f'/ConfigFiles/{phaseObj.pipelinePhase}_config.yaml')
     else:
-        TemperatureRecon.tempRecon(phaseObj)
+        TPR.tempRecon(phaseObj, opt)
         rc.WriteConfig(phaseSpecTemp, phaseObj,
                        phaseObj.rabbitDirectory + '/ConfigFiles/{0}_config.yaml'.format(phaseObj.pipelinePhase))
 

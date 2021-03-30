@@ -4,10 +4,10 @@ import glob
 import torch
 import numpy as np
 
-import CAMP.FileIO as io
-import CAMP.Core as core
-import CAMP.StructuredGridOperators as so
-from CAMP import StructuredGridTools as st
+import CAMP.camp.FileIO as io
+import CAMP.camp.Core as core
+import CAMP.camp.StructuredGridOperators as so
+from CAMP.camp import StructuredGridTools as st
 # import IDiff.Matching
 # import PyCA.Core as ca
 # import PyCA.Common as common
@@ -89,7 +89,7 @@ ElastConfigSpec = {
         Config.Param(default=[0.01, 0.01],
                      comment='Step size for the registration.'),
     'incompressible':
-        Config.Param(default=False,
+        Config.Param(default=True,
                      comment='Volume Preserving registration.'),
     'regWeight':
         Config.Param(default=[0.01, 0.05],
@@ -132,6 +132,23 @@ def MultiscaleElast(regObj, opt):
         regObj.I0 = so.ResampleWorld.Create(crp_im, device=device)(regObj.I0)
 
         del crp_im
+
+    if hasattr(regObj, 'unionSize'):
+        # Make the grid for the union and resample the two images onto that grid
+        # unionGrid = cc.MakeGrid(regObj.unionSize, regObj.unionSpacing, regObj.unionOrigin)
+        unionIm = core.StructuredGrid(
+            size=regObj.unionSize,
+            origin=regObj.unionOrigin,
+            spacing=regObj.unionSpacing,
+            channels=1
+        )
+
+        regObj.I0 = so.ResampleWorld.Create(unionIm, device=device)(regObj.I0)
+        regObj.I1 = so.ResampleWorld.Create(unionIm, device=device)(regObj.I1)
+
+        # Make sure that the registration is only happening where both of them are not 0
+        regObj.I0.data[regObj.I1.data == 0.0] = 0.0
+        regObj.I1.data[regObj.I0.data == 0.0] = 0.0
 
     # Make sure that both images are from 0 to 1
     regObj.I0 = regObj.I0 / regObj.I0.max()

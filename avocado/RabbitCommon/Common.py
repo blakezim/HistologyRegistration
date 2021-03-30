@@ -4,8 +4,8 @@ import json
 import torch
 from tkinter import *
 import numpy as np
-import CAMP.Core as core
-import CAMP.StructuredGridOperators as so
+import CAMP.camp.Core as core
+import CAMP.camp.StructuredGridOperators as so
 import avocado.RabbitCommon.commonD2N as dc
 # import PyCA.Core as ca
 # import PyCA.Common as common
